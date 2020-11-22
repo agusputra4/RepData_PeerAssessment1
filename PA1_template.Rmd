@@ -5,21 +5,91 @@ output:
     keep_md: true
 ---
 
-
 ## Loading and preprocessing the data
-
-
+To load the data into R, first we unzip the data using `unzip` function. To assign the data to a variable we used the `read.csv` function.
+```{r}
+unzip("activity.zip")
+dt <- read.csv("activity.csv")
+```  
 
 ## What is mean total number of steps taken per day?
+To count the total steps by date we will used the `dplyr` package to process the data and creating the histogram using `hist` function.
+```{r}
+library(dplyr)
+dtbydate <- dt %>% select(date, steps) %>% group_by(date) %>%
+        summarise(totsteps = sum(steps)) %>% na.omit()
+hist(dtbydate$totsteps, xlab = "Total Daily Steps",
+     main = "Histogram of Total Steps Each Day", breaks = 20)
+```  
 
-
+The mean and median of total number of steps taken per day is
+```{r}
+mean(dtbydate$totsteps)
+median(dtbydate$totsteps)
+```  
 
 ## What is the average daily activity pattern?
+To see the pattern of the data we need to create the time series plot of the steps by interval. Here we create the plot using `ggolot2` plotting system.
+```{r}
+library(ggplot2)
+dtbyinterv <- dt %>% select(interval, steps) %>% na.omit() %>%
+        group_by(interval) %>% summarise(avgsteps = mean(steps))
+ggplot(dtbyinterv, aes(x = interval, y = avgsteps)) + geom_line() +
+        labs(title="Time Series Plot of The 5-minute Interval and The Number Of Steps Taken")
+```  
 
-
+The maximum number of steps on average across all days is on interval
+```{r}
+dtbyinterv[which(dtbyinterv$avgsteps == max(dtbyinterv$avgsteps)), ]
+```
 
 ## Imputing missing values
+First we need to count the number of missing value
+```{r}
+misval <- sum(is.na(dt));misval
+```  
+We will use the mean for 5-minute interval to replace all the missing values in the data. Then, we will check if all the missing value have been replaced.
+```{r}
+replwmean <- function(x) replace(x, is.na(x), mean(x, na.rm = TRUE))
+meandt <- dt %>% group_by(interval) %>% mutate(steps= replwmean(steps))
+head(meandt)
+```  
+The new data set with the missing data filled in is created using these code
+```{r}
+fulldt <- aggregate(meandt$steps, by = list(meandt$date), sum)
+names(fulldt) <- c("date","totalsteps")
+```  
+Histogram, the mean and the median of the data is created using these code
+```{r}
+hist(fulldt$totalsteps, xlab = "Steps", ylab = "Frequency", main = "Total Daily Steps",
+     breaks = 20)
+summary(fulldt)
+```  
+From the above output, we see that `summary` function didn't report any missing value(s), which mean all missing values are filled.  
 
-
+The comparison of each old vs new mean and median is shown using these code
+```{r}
+compr <- c(mean(dtbydate$totsteps, na.rm = T), mean(fulldt$totalsteps),
+           median(dtbydate$totsteps, na.rm = T), median(fulldt$totalsteps))
+names(compr) <- c("oldmean", "newmean", "oldmedian", "newmedian"); compr
+```  
+The value of the mean is the same because we are using the mean to filled up the missing data. While the median slightly change from `10765.00` to `10766.19`.
 
 ## Are there differences in activity patterns between weekdays and weekends?
+To see the difference between the two, first we need to create new factor variable in the data indicating whether the date is a weekday or weekend.
+```{r}
+meandt$date <- as.Date(meandt$date)
+meandt$weekday <- weekdays(meandt$date)
+meandt$weekend <- ifelse(meandt$weekday == "Saturday" |
+                                 meandt$weekday == "Sunday", "Weekend", "Weekday" )
+
+meandtwkendwday <- aggregate(meandt$steps , by = list(meandt$weekend,
+                                                      meandt$interval), na.omit(mean))
+names(meandtwkendwday) <- c("weekend", "interval", "steps")
+
+ggplot(meandtwkendwday, aes(x = interval, y = steps, color = weekend)) + geom_line() +
+        facet_grid(weekend ~ .) + xlab("Interval") + ylab("Mean of Steps") +
+        ggtitle("Comparison of Average Number of Steps in Each Interval")
+```  
+
+There is a slight difference between weekdays and weekends, where the maximum step taken occurs on weekdays at interval 835.
